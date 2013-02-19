@@ -23,7 +23,7 @@ done
 # Set Variables
 OUTPUT="/tmp/output.txt"
 INPUT="/tmp/picker.sh"
-HIMD="himdcli $mount/"   # Check ur mount point is -->  /media/disk/
+HIMD="himdcli $mount/" 
 #exe=$$
 muse=0
 clean=0
