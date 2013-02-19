@@ -1,22 +1,39 @@
 #!/bin/bash
 #
-# Set Variable $test
+# Set test Variable
 test=0
+# Set version Variable $ver 
+ver=0.2
+
+for udi in $(/usr/bin/hal-find-by-capability --capability storage)
+do
+    device=$(hal-get-property --udi $udi --key block.device)
+    vendor=$(hal-get-property --udi $udi --key storage.vendor)
+    model=$(hal-get-property --udi $udi --key storage.model)
+    if [[ $(hal-get-property --udi $udi --key storage.bus) = "usb" ]]
+    then
+        parent_udi=$(hal-find-by-property --key block.storage_device --string $udi)
+        mount=$(hal-get-property --udi $parent_udi --key volume.mount_point)
+        label=$(hal-get-property --udi $parent_udi --key volume.label)
+        media_size=$(hal-get-property --udi $udi --key storage.removable.media_size)
+        size=$(( ($media_size/(1000*1000)) ))
+        about=$(printf "\nDevice: $vendor\nModel: $model\nMountpoint: $mount/\nDisk-size: ${size}MB\nVersion: ${0##*/} $ver")
+fi
+done
+# Set Variables
 OUTPUT="/tmp/output.txt"
 INPUT="/tmp/picker.sh"
-HIMD='himdcli /media/disk/'   # Check ur mount point is -->  /media/disk/
-exe=$$
+HIMD="himdcli $mount/"   # Check ur mount point is -->  /media/disk/
+#exe=$$
 muse=0
 clean=0
-# Set Variable $ver 
-ver=0.1b
 
 case "$1" in
   "") ;;
   
                       # No command-line parameters,
                       # or first parameter empty.
-  	      # Note that ${0##*/} is ${var##pattern} param substitution.
+		      # Note that ${0##*/} is ${var##pattern} param substitution.
                       # Net result is $0.
 
   -*) ARG=./$1;; #  If filename passed as argument ($1)
@@ -54,44 +71,23 @@ fi
 }
 
 function about {
-DIALOG=${DIALOG=dialog}
-for udi in $(/usr/bin/hal-find-by-capability --capability storage)
-do
-    device=$(hal-get-property --udi $udi --key block.device)
-    vendor=$(hal-get-property --udi $udi --key storage.vendor)
-    model=$(hal-get-property --udi $udi --key storage.model)
-    if [[ $(hal-get-property --udi $udi --key storage.bus) = "usb" ]]
-    then
-        parent_udi=$(hal-find-by-property --key block.storage_device --string $udi)
-        mount=$(hal-get-property --udi $parent_udi --key volume.mount_point)
-        label=$(hal-get-property --udi $parent_udi --key volume.label)
-        media_size=$(hal-get-property --udi $udi --key storage.removable.media_size)
-        size=$(( ($media_size/(1000*1000*1000)) ))
-#        printf "$vendor   $model  $device  $mount  $label "${size}GB" \n"
-        
-info="\nDevice: $vendor\nModel: $model\nDisk: $mount\nMountpoint: $label ${size}GB\nVersion: ${0##*/} $ver"
-
-$DIALOG --backtitle "HIMDCLI Interface" --title "Info" --msgbox "$info" 12 50
-fi
-done
-
+#DIALOG=${DIALOG=dialog}
+dialog --backtitle "HIMDCLI Interface" --title "Info" --msgbox "$about" 12 50
 go
 }
 
 function go {
 # If no argument is given
 if [ -z "$ARG" ]; then
-DIALOG=${DIALOG=dialog}
-
-$DIALOG --backtitle "HIMDCLI Interface" --title "State your bussiness" --menu "What should we do:" 20 50 6 \
+dialog --backtitle "HIMDCLI Interface" --title "State your bussiness" --menu "What should we do:" 20 51 6 \
 "1" "listen 1 by 1" \
 "2" "Start saving" \
 "3" "Listen multiple tracks" \
-"4" "#Write mp3 to himd" \
+"4" "Write mp3 to himd" \
 "5" "About" \
-"6" "EXIT" 2>temp
+"6" "EXIT" 2>/tmp/temp
        
-_return=$(cat temp)
+_return=$(cat /tmp/temp)
 
 case $? in
   0)
@@ -110,9 +106,6 @@ case $? in
     elif [[ $_return = 6 ]]; then 
     echo "" 
     echo "bye" 
-    else 
-    dialog --backtitle "HIMDCLI Interface" --msgbox "\n\n USE THE EXIT OPTION 6" 10 60
-    go
     fi;;
   1)
     echo ""; echo "Cancel pressed.";;
@@ -129,7 +122,7 @@ elif [[ $ARG == "./-h" || $ARG == "./--help" ]]; then
 elif [[ $ARG == "./-v" || $ARG == "./--version" ]]; then
 # Set Variable usage to 1
       usage=1
-      usage
+      about
 # Else if argument is -s 
 elif [[ $ARG == "./-s" || $ARG == "./--save" ]]; then
 # Set Variable $save to 1 
@@ -137,7 +130,7 @@ elif [[ $ARG == "./-s" || $ARG == "./--save" ]]; then
 # See is the 3rd argument is given the directory to save 
       if [ -z "$mrl" ]; then
       DIALOG=${DIALOG=dialog}
-      mrl=`$DIALOG --stdout --backtitle "HIMDCLI Interface" --title "Please choose a directory to save the file" --dselect $HOME/ 14 48`
+      mrl=`$DIALOG --backtitle "HIMDCLI Interface" --title "Please choose a directory to save the file" --dselect $HOME/ 14 48`
 
 case $? in
 	0)
@@ -162,38 +155,50 @@ elif [[ $ARG = *[[:digit:]]* ]]; then
       else
 # If a unknown argument is given 
 echo "unknown"
-      picked
 fi
 }
 
 function nameit {
+if [[ $FILENAME == "9999" || $FILENAME == "" ]]; then
+clean=0
+ARG=""
+FILENAME=""
+go
+else
 clean=1
+fi
 # Get the file to play
-dialog --timeout 2 --backtitle "HIMDCLI Interface" --msgbox "\nSearching Track: $FILENAME \n" 12 100
+dialog --timeout 1 --backtitle "HIMDCLI Interface" --msgbox "\nSearching Track: $FILENAME" 12 100
 # Trying to get the Track you choose, from the list 
-track=$($HIMD tracks | grep $FILENAME | sed -n 1p)
+track=$($HIMD tracks | grep " $FILENAME: " | sed -n 1p)
 infile="/tmp/temp.txt"
 echo $track > $infile
+sed -i 's/\[uploadable\]//g' $infile
 list=$(cat $infile | awk '{print $2, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17}' | sed -e  's/:/ /2')
 title=$(cat $infile | sed -e "s/.*://;s/(.*//")
 album=$(cat $infile | sed -e "s/.*(//;s/).*//;s/0//")
-#artist=$(cat $infile | sed -e "s/.*://;s/:.*//")
+#artist=$(cat $infile | sed -e "s/.*3//;s/:.*//")
 arr=($list)
 artist="${arr[1]} ${arr[2]}"
 time="${arr[0]}"
-dialog --timeout 2 --backtitle "HIMDCLI Interface" --msgbox "\nSearching Track: $FILENAME \nFound: $list\nArtist: $artist\nTitle: $title\nAlbum: $album\nTrack-time: $time min" 12 100
+dialog --timeout 1 --backtitle "HIMDCLI Interface" --msgbox "\nSearching Track: $FILENAME\nFound: $list\nArtist: $artist\nTitle: $title\nAlbum: $album\nTrack-time: $time min" 12 100
 # Dump the track in /tmp
 cd /tmp
 # Check file container
-if [[ $track =~ AT3 && $test != "1" ]]; then
-dialog --timeout 2 --backtitle "HIMDCLI Interface" --msgbox "\nSearching Track: $FILENAME \nFound: $list\nArtist: $artist\nTitle: $title\nAlbum: $album\nTrack-time: $time min\nCodec: ATRAC3" 12 100
+if [[ $track =~ "AT3+" && $test != "1" ]]; then
+echo " NOT SUPPORTED YET "
+picked
+elif [[ $track =~ AT3 && $test != "1" ]]; then
+artist=$(cat $infile | sed -e "s/.*AT3//;s/:.*//")
+dialog --timeout 1 --backtitle "HIMDCLI Interface" --msgbox "\nSearching Track: $FILENAME\nFound: $list\nArtist: $artist\nTitle: $title\nAlbum: $album\nTrack-time: $time min\nCodec: $codec" 12 100
 $HIMD dumpnonmp3 $FILENAME 
 # Set variable $exe for file extension
 codec=ATRAC3
 exe=oma
 save
 elif [[ $track =~ MPEG && $test != "1" ]]; then
-dialog --timeout 2 --backtitle "HIMDCLI Interface" --msgbox "\nSearching Track: $FILENAME \nFound $list\nArtist: $artist\nTitle: $title\nAlbum: $album\nTrack-time: $time min\nCodec: MPEG" 12 100
+artist=$(cat $infile | sed -e "s/.*MPEG//;s/:.*//")
+dialog --timeout 1 --backtitle "HIMDCLI Interface" --msgbox "\nSearching Track: $FILENAME\nFound: $list\nArtist: $artist\nTitle: $title\nAlbum: $album\nTrack-time: $time min\nCodec: $codec" 12 100
 $HIMD dumpmp3 $FILENAME
 # Set variable $exe for file extension
 codec=MPEG
@@ -212,13 +217,14 @@ clean=1
 file="/tmp/stream."$exe
 # Set location for save file 
 nfile=$mrl/"Convert."$exe
+
 if [[ $test == "1" ]]; then
 echo "test saving"
 echo "temp stream=" $file
 echo "Save Location=" $nfile
 play
 elif [[ $save == "1" ]]; then
-dialog --timeout 2 --backtitle "HIMDCLI Interface" --msgbox "Copying: $FILENAME \nFound: $list\nArtist: $artist\nTrack-time: $time min\nCopying: $file\nTo: $nfile" 12 100
+dialog --timeout 2 --backtitle "HIMDCLI Interface" --msgbox "Copying: $FILENAME\nFound: $list\nArtist: $artist\nTrack-time: $time min\nCopying: $file\nTo: $nfile" 12 100
 cp $file $nfile
 cleanup
 else
@@ -247,7 +253,7 @@ fi
 counterp=0
 
 #mplayer -slave -quiet -nolirc -noautosub $file |
-ffplay -nodisp -v 0 $file |
+avplay -nodisp -autoexit -v 0 $file 2>/dev/null |
 (
 # set infinite while loop
 while :
@@ -269,6 +275,7 @@ Codec: $codec
 
 
 							Time Remaining $min:$rsec
+							CTRL+C Skips track
 XXX
 EOF
 # increase counter by amount of time the loop sleeps 1
@@ -340,6 +347,7 @@ elif [[ $test == 1 ]]; then
 	rm -f $file
 	rm -f $INPUT
 	rm -f $OUTPUT
+	rm -f $infile
 #	sleep 2
 	clean=0
 	ARG=""
@@ -365,19 +373,21 @@ elif [[ $clean == 1 ]]; then
         rm -f $INPUT
         rm -f $OUTPUT
         clean=0
+        ARG=""
+        FILENAME=""
         cleanup         
 
 else
 dialog --title "Play More" \
 --backtitle "HIMDCLI Interface" \
 --yesno "Do you want to play more?" 7 60
-response=$?
-case $response in
+
+case $? in
    0) echo "oke here we go." ; FILENAME="" ARG="" go ;;
-   1) echo "No More Music."; ARG="" echo "Bye" ;;
+   1) echo "No More Music."; ARG=""; echo "Bye" ;;
    255) echo "[ESC] key pressed."; ARG="" go;;
 esac
-fi;
+fi
 
 }
 
@@ -457,9 +467,7 @@ case $? in
   0)
     if [[ $_return = 1 ]]; then 
     dowrite
-    go
     elif [[ $_return = 2 ]]; then 
-    domulti
     go
     elif [[ $_return = 3 ]]; then 
     change=1
@@ -495,11 +503,12 @@ dialog --backtitle "HIMDCLI Interface" --title "Which MP3 to Store on HiMD" --fs
 
 respose=$?
 umrl=`cat temp`
+#umrl=$(<$temp)
 case $respose in 
         0)
 		start=$($HIMD tracks | cat -n | awk 'END{print $1}')
-		avconv -i "$umrl" -ab 128000 -acodec ac3 -y "$umrl.ac3"
-		$HIMD writemp3 "$umrl.ac3"
+		#avconv -i "$umrl" -ab 128000 -acodec ac3 -y "$umrl.ac3"
+		$HIMD writemp3 "$umrl"
 		stop=$($HIMD tracks | cat -n | awk 'END{print $1}')
 
 		if [[ $(($start+1)) ==  $stop ]]; then
