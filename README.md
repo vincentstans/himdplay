@@ -27,3 +27,9 @@ Feb 19 2013
 Today I started recording by playback and using line-in to record ATRAC3+ this aside, I found a fix to surpress the
 warning from ffplay by adding 2>/dev/null to the output 
 ill be working on saving atrac3 and mpeg files to the pc with decent names
+
+Feb 20 2013
+Saving files seems ok for ATRAC3 and MPEG will be adding multi select for saving. Save files are stored in a selectable
+FolderX  /FolderX/Artist/Album/Artist - Title.xxx  where Artist/Album may be created. The more I play with it the more
+Fuzz i see in the code. been cleaning up a little atleast for my doing. Still have some ifs and elses not good. 
+Playback is flawless YYYY
