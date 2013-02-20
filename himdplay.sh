@@ -3,7 +3,7 @@
 # Set test Variable
 test=0
 # Set version Variable $ver 
-ver=0.2
+ver="0.2 by Vincent Stans"
 
 for udi in $(/usr/bin/hal-find-by-capability --capability storage)
 do
@@ -23,10 +23,12 @@ done
 # Set Variables
 OUTPUT="/tmp/output.txt"
 INPUT="/tmp/picker.sh"
-HIMD="himdcli $mount/" 
+temp="/tmp/temp.txt"
+HIMD="himdcli $mount/"   # Check ur mount point is -->  /media/disk/
 #exe=$$
 muse=0
 clean=0
+mrl="" 
 
 case "$1" in
   "") ;;
@@ -79,15 +81,18 @@ go
 function go {
 # If no argument is given
 if [ -z "$ARG" ]; then
-dialog --backtitle "HIMDCLI Interface" --title "State your bussiness" --menu "What should we do:" 20 51 6 \
+#DIALOG=${DIALOG=dialog}
+#menua="What should we do:"
+dialog --backtitle "HIMDCLI Interface" --title "State your bussiness" --menu "What should we do:" 20 51 7 \
 "1" "listen 1 by 1" \
 "2" "Start saving" \
 "3" "Listen multiple tracks" \
 "4" "Write mp3 to himd" \
 "5" "About" \
-"6" "EXIT" 2>/tmp/temp
+"6" "EXIT" \
+"7" "Test mode $test" 2>$temp
        
-_return=$(cat /tmp/temp)
+_return=$(cat $temp)
 
 case $? in
   0)
@@ -95,17 +100,26 @@ case $? in
     ARG=./-l
     go
     elif [[ $_return = 2 ]]; then 
-    ARG=./-s save=1
+    ARG=./-s
+    save=1
     go
     elif [[ $_return = 3 ]]; then 
     multisel
     elif [[ $_return = 4 ]]; then   
     menuwrite
     elif [[ $_return = 5 ]]; then
+    change=1
     about
     elif [[ $_return = 6 ]]; then 
     echo "" 
     echo "bye" 
+    elif [[ $_return = 7 ]]; then
+    if [[ $test == 0 ]]; then
+    test=1
+    else
+    test=0
+    fi
+    go
     fi;;
   1)
     echo ""; echo "Cancel pressed.";;
@@ -128,13 +142,12 @@ elif [[ $ARG == "./-s" || $ARG == "./--save" ]]; then
 # Set Variable $save to 1 
       save=1
 # See is the 3rd argument is given the directory to save 
-      if [ -z "$mrl" ]; then
-      DIALOG=${DIALOG=dialog}
-      mrl=`$DIALOG --backtitle "HIMDCLI Interface" --title "Please choose a directory to save the file" --dselect $HOME/ 14 48`
-
+      if [[ -z "$mrl" || $change -eq 1 ]]; then
+      dialog --backtitle "HIMDCLI Interface" --title "Please choose a directory to save the file" --dselect ~/ 14 48 2>$OUTPUT
+mrl=$(<$OUTPUT)
 case $? in
 	0)
-		echo ""; go;;
+		echo ""; change=0 go;;
 	1)
 		echo ""; echo "Cancel pressed."; save=0 ARG="" go;;
 	255)
@@ -170,41 +183,41 @@ fi
 # Get the file to play
 dialog --timeout 1 --backtitle "HIMDCLI Interface" --msgbox "\nSearching Track: $FILENAME" 12 100
 # Trying to get the Track you choose, from the list 
-track=$($HIMD tracks | grep " $FILENAME: " | sed -n 1p)
-infile="/tmp/temp.txt"
-echo $track > $infile
-sed -i 's/\[uploadable\]//g' $infile
-list=$(cat $infile | awk '{print $2, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17}' | sed -e  's/:/ /2')
-title=$(cat $infile | sed -e "s/.*://;s/(.*//")
-album=$(cat $infile | sed -e "s/.*(//;s/).*//;s/0//")
-#artist=$(cat $infile | sed -e "s/.*3//;s/:.*//")
-arr=($list)
-artist="${arr[1]} ${arr[2]}"
-time="${arr[0]}"
-dialog --timeout 1 --backtitle "HIMDCLI Interface" --msgbox "\nSearching Track: $FILENAME\nFound: $list\nArtist: $artist\nTitle: $title\nAlbum: $album\nTrack-time: $time min" 12 100
+# sample string "57: 4:16 AT3 Def P:10. Van Alles Naar Niets (Het ware aard verhaal 10) [uploadable]"
+track=$($HIMD tracks | grep " $FILENAME: " | sed -n 1p) # where $filename = tracknumber grep " nnn: " mark the quotes and spaces so it doesn't find track-times sed print the first matched line 
 # Dump the track in /tmp
 cd /tmp
+infile=$temp 
+echo $track > $infile # Dump the string in a file so cat can work with it 
+sed -i 's/\[uploadable\]//g' $infile # hmm all my files show [uploadable] even atrac3+ so useless info strip it
+list=$(cat $infile | awk '{print $2,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17}' | sed -e  's/:/ /2') # 
+arr=($list) 
+album=$(cat $infile | sed -e "s/.*(//;s/).*//;s/[[:alnum:]]*$//;s/[ \t]*$//;s/[ \t][^ \t]+$//;s/[ \t]*$//")
+artistarr=$(cat $infile | sed -e "s/.*${arr[1]}//;s/:.*//")
+artist="${arr[1]}$artistarr"
+title=$(cat $infile | sed -e "s/.*://;s/(.*//;s/[ \t]*$//;s/[ \t][^ \t]+$//;s/[ \t]*$//")
+time="${arr[0]}"
+dialog --timeout 1 --backtitle "HIMDCLI Interface" --msgbox "\nSearching Track: $FILENAME\nFound: $list\nArtist: $artist\nTitle: $title\nAlbum: $album\nTrack-time: $time min" 12 100
 # Check file container
-if [[ $track =~ "AT3+" && $test != "1" ]]; then
+if [[ $track =~ "AT3+ " && $test != "1" ]]; then
 echo " NOT SUPPORTED YET "
 picked
 elif [[ $track =~ AT3 && $test != "1" ]]; then
-artist=$(cat $infile | sed -e "s/.*AT3//;s/:.*//")
-dialog --timeout 1 --backtitle "HIMDCLI Interface" --msgbox "\nSearching Track: $FILENAME\nFound: $list\nArtist: $artist\nTitle: $title\nAlbum: $album\nTrack-time: $time min\nCodec: $codec" 12 100
-$HIMD dumpnonmp3 $FILENAME 
 # Set variable $exe for file extension
 codec=ATRAC3
 exe=oma
+dialog --timeout 1 --backtitle "HIMDCLI Interface" --msgbox "\nSearching Track: $FILENAME\nFound: $list\nArtist: $artist\nTitle: $title\nAlbum: $album\nTrack-time: $time min\nCodec: $codec" 12 100
+$HIMD dumpnonmp3 $FILENAME
 save
 elif [[ $track =~ MPEG && $test != "1" ]]; then
-artist=$(cat $infile | sed -e "s/.*MPEG//;s/:.*//")
-dialog --timeout 1 --backtitle "HIMDCLI Interface" --msgbox "\nSearching Track: $FILENAME\nFound: $list\nArtist: $artist\nTitle: $title\nAlbum: $album\nTrack-time: $time min\nCodec: $codec" 12 100
-$HIMD dumpmp3 $FILENAME
 # Set variable $exe for file extension
 codec=MPEG
 exe=mp3
+dialog --timeout 1 --backtitle "HIMDCLI Interface" --msgbox "\nSearching Track: $FILENAME\nFound: $list\nArtist: $artist\nTitle: $title\nAlbum: $album\nTrack-time: $time min\nCodec: $codec" 12 100
+$HIMD dumpmp3 $FILENAME
 save
 elif [ $test == "1" ]; then
+dialog --backtitle "HIMDCLI Interface" --title "TEST MODE" --msgbox "\nSearching Track: $FILENAME\nFound: $list\nArtist: $artist\nTitle: $title\nAlbum: $album\nTrack-time: $time min" 12 100
 save
 else
 echo " It screwed up! "
@@ -212,24 +225,43 @@ fi
 }
 
 function save {
+if [[ $exe == "" ]]; then
+exe=mp3
+fi
 clean=1
 # Set temp file 
 file="/tmp/stream."$exe
 # Set location for save file 
-nfile=$mrl/"Convert."$exe
+nfile=$mrl/$artist/$album/"$artist - $title.$exe"
 
 if [[ $test == "1" ]]; then
 echo "test saving"
-echo "temp stream=" $file
-echo "Save Location=" $nfile
-play
+echo "temp stream="$file
+echo "Save Location="$nfile
 elif [[ $save == "1" ]]; then
-dialog --timeout 2 --backtitle "HIMDCLI Interface" --msgbox "Copying: $FILENAME\nFound: $list\nArtist: $artist\nTrack-time: $time min\nCopying: $file\nTo: $nfile" 12 100
-cp $file $nfile
-cleanup
-else
-play
+dialog --backtitle "HIMDCLI Interface" --msgbox "Copying Track: $FILENAME\nFound: $list\n\nArtist: $artist\nTitle:$title\nAlbum:$album\nTrack: $time min\n\nCopying To: $nfile" 17 100
+if [ ! -d "$mrl" ]; then
+    mkdir $mrl
+    echo "This Directory should alread exist"
 fi
+    echo "mrl exists" $mrl
+if [ ! -d "$mrl/$artist" ]; then
+    cd "$mrl"
+    mkdir "$artist"
+      echo "Artist made" $mrl/$artist
+fi
+      echo "Artist exists" $mrl/$artist
+if [ ! -d "$mrl/$artist/$album" ]; then
+    cd "$mrl/$artist"
+    mkdir "$album"
+      echo "Album made" $mrl/$artist/$album
+fi
+      echo "Album exists" $mrl/$artist/$album
+sleep 10
+cp "$file" "$nfile"
+cleanup
+fi
+play
 }
 
 function play {
@@ -245,9 +277,11 @@ min=$(echo $time | awk -F ":" '{print $1}')
 tsec=$(echo $time | awk -F ":" '{print $2}')
 if [ $tsec -lt 10 ]; then
 tsec=$(echo $tsec | awk -F0 '{print $2}');
-else
-sec=$(( $min * 60 + $tsec ));
+if [[ $tsec == "" ]]; then
+tsec=0
 fi
+fi
+sec=$(( $min * 60 + $tsec ));
 
 # set counter to 0 
 counterp=0
@@ -264,37 +298,43 @@ XXX
 $counter
 
 
-Now Playing $list ( $counterp sec of $sec):
+Now Playing $list 
+( $counterp sec of a total $sec sec ):
 
-Artist: $artist
+Artist:$artist
 Title: $title
 Album: $album
-Track-time: $time min
+Track: $time min
 Codec: $codec
 
 
 
-							Time Remaining $min:$rsec
-							CTRL+C Skips track
+            Time Remaining $rmin:$rsec
+            CTRL+C Skips track
 XXX
 EOF
 # increase counter by amount of time the loop sleeps 1
 (( counterp+=1 ))
 (( tsec-=1 ))
-if [ $tsec -eq 0 ]; then
+if [[ $tsec -eq 0 || $tsec -lt 0 ]]; then
 (( min-=1 ))
 (( tsec+=60 ))
-else
+fi
 counter=$(echo "100 / $sec * $counterp" | bc -l | awk -F. '{print $1}') # Calculating a precentage 100% devided by total seconds %sec multiplyed by the times the loop ran %counterp. the value is nn.nnnnnnn so we search with awk for " . " and print the first word found $1
-[[ $counter -gt 100 ]] && break 
-# delay it a specified amount of time i.e 1 sec for the loop to run 
-sleep 1
+
 if [ $tsec -lt 10 ]; then
 rsec=$(echo 0$tsec);
+rmin=$min
+elif [ $tsec -eq 60 ]; then
+rsec=$(echo 00);
+rmin=$(( $min + 1 ));
 else
 rsec=$tsec
+rmin=$min
 fi
-fi
+[[ $counter -gt 100 ]] && break
+# delay it a specified amount of time i.e 1 sec for the loop to run 
+sleep 1
 done
 ) | dialog --clear --title "File Playing" --gauge "Please wait" 20 100 $sec
 
@@ -344,11 +384,6 @@ elif [[ $test == 1 ]]; then
         rm -f $file
         mplay
         else
-	rm -f $file
-	rm -f $INPUT
-	rm -f $OUTPUT
-	rm -f $infile
-#	sleep 2
 	clean=0
 	ARG=""
 	FILENAME=""
@@ -361,17 +396,19 @@ dialog --title "Play it now" \
 response=$?
 case $response in
    0) echo "";
-      echo "oke here we go." 
+      echo "oke here we go."; save=0 clean=1
       play ;;
    1) echo ""
       echo "No More Music."; save=0 ARG="" cleanup;;
    255) echo "[ESC] key pressed."; save=0  ARG="" cleanup;;
 esac
 elif [[ $clean == 1 ]]; then
-        #echo " Removing files" $file $INPUT $OUTPUT
+        echo " Removing files" $file $INPUT $OUTPUT
+        sleep 3
         rm -f $file
         rm -f $INPUT
         rm -f $OUTPUT
+        rm -f $infile
         clean=0
         ARG=""
         FILENAME=""
@@ -383,7 +420,7 @@ dialog --title "Play More" \
 --yesno "Do you want to play more?" 7 60
 
 case $? in
-   0) echo "oke here we go." ; FILENAME="" ARG="" go ;;
+   0) echo ""; echo "oke here we go." ; FILENAME="" ARG="" go ;;
    1) echo "No More Music."; ARG=""; echo "Bye" ;;
    255) echo "[ESC] key pressed."; ARG="" go;;
 esac
@@ -399,8 +436,9 @@ sed -i 's/$/" \\/' $OUTPUT
 sed -i 's/\[uploadable\]//g' $OUTPUT
 cp $OUTPUT $INPUT
 list="$(cat $INPUT)"
-sed -i '1i\ #!/bin/bash/\ndialog --title "Search - Selection" --backtitle "HIMDCLI Interface" --menu "Choose track " 23 110 18 \\' $INPUT
-sed -i '$ a\9999 "END OF LIST" 2>/tmp/output.txt' $INPUT
+echo $mrl > $OUTPUT
+sed -i '1i\ #!/bin/bash/\nOUTPUT="/tmp/output.txt"\nDIALOG=${DIALOG=dialog}\nmenua="What should we do:"\nmrl=$(<$OUTPUT)\n$DIALOG --title "Search - Selection" --backtitle "HIMDCLI Interface" --menu "$menua \n $mrl" 23 110 18 \\' $INPUT
+sed -i '$ a\9999 "END OF LIST" 2>$OUTPUT' $INPUT
 chmod +x $INPUT
 
 if [[ $FILENAME != "" ]]; then
@@ -459,9 +497,9 @@ $DIALOG --backtitle "HIMDCLI Interface" --title "Writing Menu" --menu "What shou
 "2" "#Multi select" \
 "3" "Change source directory" \
 "4" "About" \
-"5" "Back" 2>temp
+"5" "Back" 2>$temp
        
-_return=$(cat temp)
+_return=$(cat $temp)
 
 case $? in
   0)
@@ -490,8 +528,8 @@ esac
 
 function dowrite {
 if [[ $dmrl == "" || $change == 1 ]]; then
-dialog --backtitle "HIMDCLI Interface" --title "From What Directory" --dselect ~/ 10 60 2>temp
-dmrl=`cat temp`
+dialog --backtitle "HIMDCLI Interface" --title "From What Directory" --dselect ~/ 10 60 2>$temp
+dmrl=`cat $temp`
    if [ $change == 1 ]; then
    change=0
    menuwrite
@@ -499,10 +537,11 @@ dmrl=`cat temp`
       dowrite
    fi
 else
-dialog --backtitle "HIMDCLI Interface" --title "Which MP3 to Store on HiMD" --fselect $dmrl 10 60 2>temp
+
+dialog --backtitle "HIMDCLI Interface" --title "Which MP3 to Store on HiMD" --menu $drml --fselect $dmrl 10 60 2>$temp
 
 respose=$?
-umrl=`cat temp`
+umrl=`cat $temp`
 #umrl=$(<$temp)
 case $respose in 
         0)
